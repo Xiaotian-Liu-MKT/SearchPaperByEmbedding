@@ -9,6 +9,7 @@ from typing import Any, Dict, Optional
 
 import streamlit as st
 
+from config_utils import get_setting
 from search import PaperSearcher
 
 
@@ -145,10 +146,19 @@ with cols[2]:
         help="如使用自建 OpenAI 兼容服务，可在此覆盖默认地址。",
     )
 
+if model_type == "openai":
+    configured_key = get_setting("OPENAI_API_KEY")
+elif model_type == "siliconflow":
+    configured_key = get_setting("SILICONFLOW_API_KEY")
+else:
+    configured_key = None
+
 api_key = st.text_input(
     "API Key（若选择线上服务）",
     type="password",
-    placeholder="自动读取 OPENAI_API_KEY / SILICONFLOW_API_KEY",
+    value=configured_key or "",
+    placeholder="请在 .env 或 config.json 中配置对应的 API Key",
+    key=f"api_key_{model_type}",
 )
 
 recompute = st.checkbox(
