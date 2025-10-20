@@ -18,10 +18,13 @@ class PaperSearcher:
         csv_mapping=None,
         embedding_model=None,
     ):
+    def __init__(self, papers_file, model_type="openai", api_key=None, base_url=None,
+                 data_format=None, csv_mapping=None):
         self.papers_file = papers_file
         self.data_format = (data_format or Path(papers_file).suffix.lower().lstrip('.') or 'json')
         self.csv_mapping = csv_mapping or {}
         self.papers = self._load_papers(papers_file)
+
         self.model_type = model_type
         self.embeddings = None
         if model_type in {"openai", "siliconflow"}:
@@ -45,6 +48,20 @@ class PaperSearcher:
             self.client = OpenAI(**client_kwargs)
             self.model_name = embedding_model or default_model
         elif model_type == "local":
+
+        if model_type == "openai":
+            from openai import OpenAI
+            resolved_api_key = api_key or os.getenv('OPENAI_API_KEY')
+            if not resolved_api_key:
+                raise ValueError(
+                    "OpenAI API key is missing. Pass it with api_key=... or set the OPENAI_API_KEY environment variable."
+                )
+            self.client = OpenAI(
+                api_key=resolved_api_key,
+                base_url=base_url
+            )
+            self.model_name = "text-embedding-3-large"
+        else:
             from sentence_transformers import SentenceTransformer
             local_model_name = embedding_model or 'all-MiniLM-L6-v2'
             self.model = SentenceTransformer(local_model_name)
@@ -53,6 +70,7 @@ class PaperSearcher:
             raise ValueError(f"Unsupported model_type: {model_type}")
         self.cache_file = self._get_cache_file(papers_file, model_type, self.model_name)
         self._load_cache()
+
     # ------------------------------------------------------------------
     # Data loading
     # ------------------------------------------------------------------
@@ -67,6 +85,10 @@ class PaperSearcher:
         raise ValueError(f"Unsupported data format: {self.data_format}")
     def _normalize_key(self, name):
         return ''.join(ch for ch in name.lower() if not ch.isspace())
+
+    def _normalize_key(self, name):
+        return ''.join(ch for ch in name.lower() if not ch.isspace())
+
     def _load_csv_papers(self, papers_file):
         default_mapping = {
             'title': [
@@ -84,6 +106,7 @@ class PaperSearcher:
             'link': ['Link', '链接'],
             'doi': ['DOI']
         }
+
         mapping = {}
         for key, defaults in default_mapping.items():
             overrides = self.csv_mapping.get(key)
@@ -97,6 +120,7 @@ class PaperSearcher:
             for value in defaults:
                 if value not in mapping[key]:
                     mapping[key].append(value)
+
         papers = []
         with open(papers_file, 'r', encoding='utf-8-sig') as f:
             reader = csv.DictReader(f)
@@ -106,6 +130,9 @@ class PaperSearcher:
                     for key, value in row.items()
                 }
                 paper = {}
+
+                paper = {}
+
                 title = self._extract_csv_value(normalized_row, mapping['title'])
                 if not title:
                     # Skip rows without a title since the downstream pipeline expects one
@@ -140,6 +167,48 @@ class PaperSearcher:
         if not papers:
             raise ValueError("No papers were loaded from the CSV file. Check the mapping or encoding.")
         return papers
+
+                abstract = self._extract_csv_value(normalized_row, mapping['abstract'])
+                if abstract:
+                    paper['abstract'] = abstract
+
+                authors = self._extract_csv_list(normalized_row, mapping['authors'])
+                if authors:
+                    paper['authors'] = authors
+
+                year = self._extract_csv_value(normalized_row, mapping['year'])
+                if year:
+                    paper['year'] = year
+
+                source = self._extract_csv_value(normalized_row, mapping['source'])
+                if source:
+                    paper['source'] = source
+
+                paper_id = self._extract_csv_value(normalized_row, mapping['paper_id'])
+                if paper_id:
+                    paper['number'] = paper_id
+
+                link = self._extract_csv_value(normalized_row, mapping['link'])
+                if link:
+                    paper['forum_url'] = link
+
+                doi = self._extract_csv_value(normalized_row, mapping['doi'])
+                if doi:
+                    paper['doi'] = doi
+
+                keywords = self._extract_csv_list(normalized_row, mapping['keywords'])
+                if keywords:
+                    paper['keywords'] = keywords
+
+                paper['raw_row'] = row
+
+                papers.append(paper)
+
+        if not papers:
+            raise ValueError("No papers were loaded from the CSV file. Check the mapping or encoding.")
+
+        return papers
+
     def _extract_csv_value(self, normalized_row, candidates):
         for candidate in candidates:
             key = self._normalize_key(candidate)
@@ -150,12 +219,14 @@ class PaperSearcher:
                 if value:
                     return value
         return ""
+
     def _extract_csv_list(self, normalized_row, candidates):
         raw_values = []
         for candidate in candidates:
             key = self._normalize_key(candidate)
             if key in normalized_row and normalized_row[key]:
                 raw_values.append(normalized_row[key])
+
         items = []
         for value in raw_values:
             if not value:
@@ -171,6 +242,7 @@ class PaperSearcher:
                 items.extend(str(item).strip() for item in value if str(item).strip())
             else:
                 items.append(str(value).strip())
+
         # Preserve order while removing duplicates
         seen = set()
         unique_items = []
@@ -180,6 +252,8 @@ class PaperSearcher:
                 unique_items.append(item)
         return unique_items
     def _get_cache_file(self, papers_file, model_type, model_name):
+
+    def _get_cache_file(self, papers_file, model_type):
         base_name = Path(papers_file).stem
         file_hash = hashlib.md5(papers_file.encode()).hexdigest()[:8]
         safe_model = ''.join(ch if ch.isalnum() or ch in {'-', '_'} else '_' for ch in model_name)
@@ -298,6 +372,11 @@ class PaperSearcher:
         for i, result in enumerate(results[:n], 1):
             paper = result['paper']
             sim = result['similarity']
+
+        for i, result in enumerate(results[:n], 1):
+            paper = result['paper']
+            sim = result['similarity']
+
             print(f"{i}. [{sim:.4f}] {paper['title']}")
             number = paper.get('number') or paper.get('paper_id') or paper.get('eid') or 'N/A'
             area = paper.get('primary_area') or paper.get('source') or paper.get('journal') or 'N/A'
@@ -443,3 +522,115 @@ def main(argv=None):
 
 if __name__ == "__main__":
     sys.exit(main())
+
+def _parse_args(argv=None):
+    parser = argparse.ArgumentParser(
+        description="Search similar research papers without writing code.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+    )
+    parser.add_argument(
+        "data",
+        help="Path to your paper dataset (.json, .jsonl, or .csv such as a Scopus export)."
+    )
+    parser.add_argument(
+        "--format",
+        choices=["json", "jsonl", "csv"],
+        help="Format of the input data. Detected automatically from the file extension when omitted."
+    )
+    parser.add_argument(
+        "--model",
+        choices=["local", "openai"],
+        default="local",
+        help="Embedding model to use. The local option runs fully offline."
+    )
+    parser.add_argument(
+        "--api-key",
+        help="OpenAI API key. You can also set the OPENAI_API_KEY environment variable."
+    )
+    parser.add_argument(
+        "--base-url",
+        help="Optional custom OpenAI-compatible API base URL."
+    )
+    parser.add_argument(
+        "--query",
+        help="Text description of the papers you are looking for. If omitted, you will be prompted interactively."
+    )
+    parser.add_argument(
+        "--top-k",
+        type=int,
+        default=10,
+        help="How many similar papers to retrieve."
+    )
+    parser.add_argument(
+        "--show",
+        type=int,
+        help="How many results to show in the terminal. Defaults to the same number as --top-k."
+    )
+    parser.add_argument(
+        "--save",
+        help="Optional path to save the full results as JSON."
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Recompute embeddings even if a cache file already exists."
+    )
+    return parser.parse_args(argv)
+
+
+def _prompt_query():
+    print("\nWhat kind of papers would you like to find?")
+    print("Type a few keywords or a short description, then press Enter.")
+    while True:
+        query = input("> ").strip()
+        if query:
+            return query
+        print("Please enter at least a few words describing the papers you need.")
+
+
+def main(argv=None):
+    args = _parse_args(argv)
+
+    try:
+        searcher = PaperSearcher(
+            args.data,
+            model_type=args.model,
+            api_key=args.api_key,
+            base_url=args.base_url,
+            data_format=args.format
+        )
+    except Exception as exc:
+        print(f"Error: {exc}")
+        return 1
+
+    try:
+        searcher.compute_embeddings(force=args.force)
+    except Exception as exc:
+        print(f"Failed to compute embeddings: {exc}")
+        return 1
+
+    query = args.query.strip() if args.query else _prompt_query()
+
+    try:
+        results = searcher.search(query=query, top_k=args.top_k)
+    except Exception as exc:
+        print(f"Search failed: {exc}")
+        return 1
+
+    display_n = args.show if args.show is not None else min(args.top_k, 10)
+    searcher.display(results, n=display_n)
+
+    if args.save:
+        try:
+            searcher.save(results, args.save)
+        except Exception as exc:
+            print(f"Could not save results: {exc}")
+            return 1
+
+    print("Done! You can rerun this command with a different --query to explore new topics.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+
