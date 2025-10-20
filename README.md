@@ -9,24 +9,52 @@ Find similar papers using semantic search. Supports both local models (free) and
 - Support embedding caching 
 - Embed model support: Open-source (e.g., all-MiniLM-L6-v2) or OpenAI
 
-## Quick Start
+## Zero-Code Quickstart
 
-```bash
-pip install -r requirements.txt
-```
+1. **Install Python 3.9 or newer.** If you are on Windows, install it from [python.org](https://www.python.org/downloads/) and enable the "Add python.exe to PATH" option.
+2. **Download this project** (click the green *Code* button → *Download ZIP*) and unzip it somewhere easy to find.
+3. **Open a terminal** inside the project folder and install the required libraries:
 
-### 1. Prepare Papers
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-```python
-from crawl import crawl_papers
+4. **Run the one-command search experience.** Replace the file name with your own JSON/JSONL/CSV dataset (Scopus exports work out of the box):
 
-crawl_papers(
-    venue_id="ICLR.cc/2026/Conference/Submission",
-    output_file="iclr2026_papers.json"
-)
-```
+   ```bash
+   python search.py my_papers.csv --format csv --model local
+   ```
 
-### 2. Search Papers
+   - The program will guide you with friendly prompts: simply type what you want to find (e.g. "service robots empathy"), press Enter, and the matching papers will appear.
+   - Add `--save results.json` if you want the results saved automatically.
+   - When your file has an obvious extension (e.g. `.csv`, `.json`), the format is detected automatically and `--format` can be skipped.
+
+5. **(Optional) Use OpenAI embeddings** for higher quality results:
+
+   ```bash
+   setx OPENAI_API_KEY "your-key"   # Windows PowerShell
+   # export OPENAI_API_KEY="your-key"  # macOS/Linux
+   python search.py my_papers.csv --format csv --model openai
+   ```
+
+   You can also pass the key directly with `--api-key YOUR_KEY` when running the command.
+
+## Working with Data
+
+- **Crawling OpenReview papers:**
+
+  ```python
+  from crawl import crawl_papers
+
+  crawl_papers(
+      venue_id="ICLR.cc/2026/Conference/Submission",
+      output_file="iclr2026_papers.json"
+  )
+  ```
+
+- **Loading Scopus CSV exports:** No extra steps are required. Run `python search.py your_export.csv --format csv` or create a `PaperSearcher` manually if you prefer to integrate it into your own script. Custom column names can be provided via the `csv_mapping` parameter when they differ from the standard Scopus headers.
+
+## Searching from Python (advanced)
 
 ```python
 from search import PaperSearcher
@@ -35,7 +63,6 @@ from search import PaperSearcher
 searcher = PaperSearcher('iclr2026_papers.json', model_type='local')
 
 # OpenAI model (better, requires API key)
-# export OPENAI_API_KEY='your-key'
 # searcher = PaperSearcher('iclr2026_papers.json', model_type='openai')
 
 searcher.compute_embeddings()
